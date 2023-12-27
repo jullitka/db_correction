@@ -1,39 +1,75 @@
 import sqlite3
 
 from db_wrapper import DatabaseWrapper
-from utils import same_elements, missing_elements
+from utils import common_elements, missing_elements, same_elements
 
 class DatabaseCorrection:
+    """Корректировка бд target_db по бд source_db."""
 
     def __init__(self, source_db, target_db):
         self.source_db = source_db
         self.target_db = target_db
 
-    def correct_data(self):
-
+    def correct_table(self):
+        """Корректировка таблиц: добавление новых, удаление старых."""
+        # получаем список таблиц из обеих бд
         source_tables = self.source_db.get_tables()
         target_tables = self.target_db.get_tables()
-
+        # сравнивам их
         if not same_elements(source_tables, target_tables):
-            print(missing_elements(source_tables, target_tables))
+            # если названия таблиц отличаются, получаем списки отличающихся
+            missing_element = missing_elements(target_tables, source_tables)
+            print(missing_element)
+            # перебираем все таблицы, которых нет в базе target_db
+            for element in missing_element[0]:
+                # получаем данные о столбцах таблицы (название, тип)
+                table_info = self.source_db.get_fields(element)
+                # получаем данные из таблицы
+                data = self.source_db.get_all_data(element)
+                # создаем новую таблицу в бд target_bd
+                self.target_db.create_table(element, table_info)
+                # добавляем данные в созданную таблицу
+                self.target_db.insert_data(element, data)
 
-        for table in source_tables:
-            if table in target_tables:
-                source_fields = self.source_db.get_fields(table)
-                target_fields = self.target_db.get_fields(table)
+            for element in missing_element[1]:
+                # перебираем все таблицы, которых нет в базе source_db
+                self.target_db.drop_table_if_empty(element)
+
+            return 'Таблицы скорректированы'
+        
+    def correct_fields(self):
+        """Корректировка столбцов: добавление новых, удаление старых"""
+        # получаем список таблиц из обеих бд
+        source_tables = self.source_db.get_tables()
+        target_tables = self.target_db.get_tables()
+        # находим таблицы, которые есть в обеих базах
+        common_tables = common_elements(source_tables, target_tables)
+        # получаем информацию о полях из каждой таблицы
+        for table in common_tables:
+            source_fields = source_db.get_fields(table)
+            target_fields = target_db.get_fields(table)
+
+            if not same_elements(source_fields, target_fields):
+                # если в таблицах с одинаковыми названиями есть отличия в полях
+                # получаем отличающиеся элементы
+                dif_elements = missing_elements(target_fields, source_fields)
+
+                for el in dif_elements:
+                    print(el)
+
+        
+
+        
+
+    def correct_data(self):
+        """Корректировка бд target_db по бд source_db."""
+        self.correct_fields()
+        # self.correct_table()
 
 
-            else:
-                # Если таблица отсутствует во второй базе, вы можете решить, что делать в этом случае
-                # Например, создать новую таблицу во второй базе, скопировав структуру и данные из первой
-                self.target_db.create_table_like(source_table, target_table)
 
-        # Возвращайте информацию о выполненных коррекциях
-        return "Данные скорректированы успешно"
-
-
-source_db = DatabaseWrapper('employees_1.db')
-target_db = DatabaseWrapper('employees_2.db')
+source_db = DatabaseWrapper('employees_2.db')
+target_db = DatabaseWrapper('employees_1.db')
 corrector = DatabaseCorrection(source_db, target_db)
 data = corrector.correct_data()
 print(data)

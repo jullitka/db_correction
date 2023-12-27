@@ -22,3 +22,8 @@ def missing_elements(list_1, list_2):
     missing_in_list_2 = set_1 - set_2
 
     return (list(missing_in_list_1), list(missing_in_list_2))
+
+
+def common_elements(list_1, list_2):
+    """Находит общие элементы в двух списках."""
+    return list(set(list_1) & set(list_2))

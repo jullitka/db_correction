@@ -6,124 +6,127 @@ class DatabaseWrapper:
 
     def __init__(self, db):
         self.db = db
+        self.conn = sqlite3.connect(self.db)
+        self.cur = self.conn.cursor()
+
+    def close_connection(self):
+        """Закрываем соединение с бд."""
+        self.conn.close()    
 
     def get_tables(self):
         """Получаем список всех таблиц из бд."""
-        conn = sqlite3.connect(self.db)
-        cur = conn.cursor()
-        cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        tables = cur.fetchall()
-        conn.close()
+        self.cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = self.cur.fetchall()
         return [table[0] for table in tables]
 
     def get_fields(self, table):
         """Получаем списко всех полей и информацию о них
         из таблицы table в бд."""
-        conn = sqlite3.connect(self.db)
-        cur = conn.cursor()
-        cur.execute(f"PRAGMA table_info('{table}')")
-        fields = cur.fetchall()
-        conn.close()
+        self.cur.execute(f"PRAGMA table_info('{table}')")
+        fields =self.cur.fetchall()
         fields_without_id = [field[1:] for field in fields]
         return fields_without_id
 
     def get_foreign_keys_info(self, table_name):
         """Получаем информацию о внешних ключах таблицы."""
-        conn = sqlite3.connect(self.db)
-        cur = conn.cursor()
-        cur.execute(f"PRAGMA foreign_key_list({table_name});")
-        foreign_keys_info = cur.fetchall()
-        conn.close()
-        return foreign_keys_info
+        self.cur.execute(f"PRAGMA foreign_key_list({table_name});")
+        foreign_keys_info = self.cur.fetchall()
+        return [(item[2], item[3], item[4]) for item in foreign_keys_info]
+
+    def get_all_foreign_keys(self):
+        """ Собирает информацию о всех внешних ключах
+        из всех таблиц в базе данных.
+        Возвращает словарь с ключами."""
+        all_foreign_keys = {}
+        tables = self.get_tables()
+        for table in tables:
+            foreign_keys_info = self.get_foreign_keys_info(table)
+            all_foreign_keys[table] = foreign_keys_info
+        return all_foreign_keys
+
+    def set_foreign_keys(self, foreign_keys_info):
+        """ Расставляет внешние ключи в бд"""
+        for table, keys_info in foreign_keys_info.items():
+            existing_keys = self.get_foreign_keys_info(table)
+            for key_info in keys_info:
+                if key_info not in existing_keys:
+                    self.cur.execute(
+                        f"""ALTER TABLE {table} ADD FOREIGN KEY ({key_info[1]}) REFERENCES {key_info[0]}({key_info[2]})"""
+                    )
+        self.conn.commit()
 
     def create_table(self, table_name, fields):
         """Добавляем новую таблицу table_name в бд
         с полями из списка fields."""
-        conn = sqlite3.connect(self.db)
-        cur = conn.cursor()
         columns_str = ", ".join(
             [f"{field[0]} {field[1]} NOT NULL" if field[4] == 1
              else f"{field[0]} {field[1]}" for field in fields]
         )
-        cur.execute(
+        self.cur.execute(
             f"CREATE TABLE IF NOT EXISTS {table_name} ({columns_str})"
                 )
-        conn.commit()
-        conn.close()
+        self.conn.commit()
 
     def drop_table_if_empty(self, table_name):
         """Удаляем таблицу table_name из бд в случае, если в ней нет данных.
         Если в таблице хранятся данные, сообщаем,
         что она не может быть удалена"""
-        conn = sqlite3.connect(self.db)
-        cur = conn.cursor()
-        cur.execute("SELECT count(*) FROM {}".format(table_name))
-        result = cur.fetchone()[0]
+        self.cur.execute("SELECT count(*) FROM {}".format(table_name))
+        result = self.cur.fetchone()[0]
 
         if result == 0:
-            cur.execute("DROP TABLE {}".format(table_name))
-            conn.commit()
+            self.cur.execute("DROP TABLE {}".format(table_name))
+            self.conn.commit()
         else:
-            print(f"Таблица {table_name} содержит данные и не может быть удалена")
-            return f"Таблица {table_name} содержит данные и не может быть удалена"
-
-        conn.close()
+            print(f"""Таблица {table_name}
+                  содержит данные и не может быть удалена""")
+            return f"""Таблица {table_name}
+                    содержит данные и не может быть удалена"""
 
     def add_column(self, table, column_name, column_type):
         """Добавляем дополнительное поле с именем column_name
         типа column_type в таблицу table."""
-
-        conn = sqlite3.connect(self.db)
-        cur = conn.cursor()
-        cur.execute("ALTER TABLE {} ADD COLUMN {} {}".format(
+        self.cur.execute("ALTER TABLE {} ADD COLUMN {} {}".format(
             table, column_name, column_type
         ))
-        conn.commit()
-        conn.close()
+        self.conn.commit()
 
     def drop_column_if_empty(self, table_name, column_name):
         """Удаляем поле column_name в таблице table_name,
         если оно не содержит данных.
         Если поле содержит данные, то сообщаем,
         что оно не может быть удалено."""
-
-        conn = sqlite3.connect(self.db)
-        cur = conn.cursor()
-        cur.execute(f'SELECT {column_name} FROM {table_name}')
-        if not cur.fetchone():
-            cur.execute(f"ALTER TABLE {table_name} DROP COLUMN {column_name}")
-            conn.commit()
+        self.cur.execute(f'SELECT {column_name} FROM {table_name}')
+        if not self.cur.fetchone():
+            self.cur.execute(f"ALTER TABLE {table_name} DROP COLUMN {column_name}")
+            self.conn.commit()
         else:
-            print(f"Столбец {column_name} в таблице {table_name} содержит данные, он не может быть удален")
-            return f"Столбец {column_name} в таблице {table_name} содержит данные, он не может быть удален"
-        conn.close()
+            print(f"""Столбец {column_name} в таблице {table_name}
+                   содержит данные, он не может быть удален""")
+            return f"""Столбец {column_name} в таблице {table_name}
+                    содержит данные, он не может быть удален"""
 
     def get_all_data(self, table):
         """Собираем все данные из таблицы table."""
-        conn = sqlite3.connect(self.db)
-        cur = conn.cursor()
-        cur.execute(f'PRAGMA table_info({table})')
+        self.cur.execute(f'PRAGMA table_info({table})')
         columns = [column[1] for column in cur.fetchall()]
-        cur.execute(f"SELECT * FROM {table}")
-        data = cur.fetchall()
-        conn.close()
+        self.cur.execute(f"SELECT * FROM {table}")
+        data = self.cur.fetchall()
 
         result = []
         for row in data:
             row_data = dict(zip(columns, row))
             result.append(row_data)
         return result
-    
+
     def insert_data(self, table, data):
         """Добавляем данные в таблицу table."""
-        conn = sqlite3.connect(self.db)
-        cur = conn.cursor()
         columns = ', '.join(data[0].keys())
         placeholders = ', '.join('?'*len(data[0]))
         for row in data:
             values = tuple(row.values())
-            cur.execute(
-                f"INSERT INTO {table} ({columns}) VALUES ({placeholders})", values
+            self.cur.execute(
+                f"""INSERT INTO {table} ({columns})
+                 VALUES ({placeholders})""", values
             )
-        conn.commit()
-        conn.close()
+        self.conn.commit()

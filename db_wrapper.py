@@ -11,7 +11,7 @@ class DatabaseWrapper:
 
     def close_connection(self):
         """Закрываем соединение с бд."""
-        self.conn.close()    
+        self.conn.close()
 
     def get_tables(self):
         """Получаем список всех таблиц из бд."""
@@ -23,7 +23,7 @@ class DatabaseWrapper:
         """Получаем списко всех полей и информацию о них
         из таблицы table в бд."""
         self.cur.execute(f"PRAGMA table_info('{table}')")
-        fields =self.cur.fetchall()
+        fields = self.cur.fetchall()
         fields_without_id = [field[1:] for field in fields]
         return fields_without_id
 
@@ -33,38 +33,26 @@ class DatabaseWrapper:
         foreign_keys_info = self.cur.fetchall()
         return [(item[2], item[3], item[4]) for item in foreign_keys_info]
 
-    def get_all_foreign_keys(self):
-        """ Собирает информацию о всех внешних ключах
-        из всех таблиц в базе данных.
-        Возвращает словарь с ключами."""
-        all_foreign_keys = {}
-        tables = self.get_tables()
-        for table in tables:
-            foreign_keys_info = self.get_foreign_keys_info(table)
-            all_foreign_keys[table] = foreign_keys_info
-        return all_foreign_keys
-
-    def set_foreign_keys(self, foreign_keys_info):
-        """ Расставляет внешние ключи в бд"""
-        for table, keys_info in foreign_keys_info.items():
-            existing_keys = self.get_foreign_keys_info(table)
-            for key_info in keys_info:
-                if key_info not in existing_keys:
-                    self.cur.execute(
-                        f"""ALTER TABLE {table} ADD FOREIGN KEY ({key_info[1]}) REFERENCES {key_info[0]}({key_info[2]})"""
-                    )
-        self.conn.commit()
-
-    def create_table(self, table_name, fields):
+    def create_table(self, table_name, fields, foreign_keys=None):
         """Добавляем новую таблицу table_name в бд
-        с полями из списка fields."""
+        с полями из списка fields и внешними ключами foreign_keys."""
         columns_str = ", ".join(
             [f"{field[0]} {field[1]} NOT NULL" if field[4] == 1
              else f"{field[0]} {field[1]}" for field in fields]
         )
-        self.cur.execute(
-            f"CREATE TABLE IF NOT EXISTS {table_name} ({columns_str})"
-                )
+        if foreign_keys is not None:
+            foreign_keys_str = ", ".join(
+                [f"""FOREIGN KEY ({key_info[1]}) REFERENCES
+                 {key_info[0]}({key_info[2]})""" for key_info in foreign_keys]
+            )
+            self.cur.execute(
+                f"""CREATE TABLE IF NOT EXISTS
+                {table_name} ({columns_str}, {foreign_keys_str})"""
+            )
+        else:
+            self.cur.execute(
+                f"CREATE TABLE IF NOT EXISTS {table_name} ({columns_str})"
+            )
         self.conn.commit()
 
     def drop_table_if_empty(self, table_name):
@@ -98,7 +86,8 @@ class DatabaseWrapper:
         что оно не может быть удалено."""
         self.cur.execute(f'SELECT {column_name} FROM {table_name}')
         if not self.cur.fetchone():
-            self.cur.execute(f"ALTER TABLE {table_name} DROP COLUMN {column_name}")
+            self.cur.execute(f"""ALTER TABLE {table_name}
+                             DROP COLUMN {column_name}""")
             self.conn.commit()
         else:
             print(f"""Столбец {column_name} в таблице {table_name}
@@ -109,7 +98,7 @@ class DatabaseWrapper:
     def get_all_data(self, table):
         """Собираем все данные из таблицы table."""
         self.cur.execute(f'PRAGMA table_info({table})')
-        columns = [column[1] for column in cur.fetchall()]
+        columns = [column[1] for column in self.cur.fetchall()]
         self.cur.execute(f"SELECT * FROM {table}")
         data = self.cur.fetchall()
 

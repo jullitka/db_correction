@@ -1,3 +1,5 @@
+import os
+
 from db_wrapper import DatabaseWrapper
 from utils import (common_elements, get_first_elements,
                    missing_elements, same_elements)
@@ -23,10 +25,12 @@ class DatabaseCorrection:
             for element in missing_element[0]:
                 # получаем данные о столбцах таблицы (название, тип)
                 table_info = self.source_db.get_fields(element)
+                # получаем данные о внешних ключах таблицв
+                foreign_keys = self.source_db.get_foreign_keys_info(element)
                 # получаем данные из таблицы
                 data = self.source_db.get_all_data(element)
                 # создаем новую таблицу в бд target_bd
-                self.target_db.create_table(element, table_info)
+                self.target_db.create_table(element, table_info, foreign_keys)
                 # добавляем данные в созданную таблицу
                 self.target_db.insert_data(element, data)
 
@@ -69,25 +73,24 @@ class DatabaseCorrection:
                 print(f'Поля таблицы {table} скорректированы')
         return 'Поля скорректированы'
 
-    def correct_primary_key(self):
-        """Добавление внешних ключей при необходимости"""
-        source_foreign_key = self.source_db.get_all_foreign_keys()
-        self.target_db.set_foreign_keys(source_foreign_key)
-        return "Ключи скорректированы"
-
     def correct_data(self):
         """Корректировка бд target_db по бд source_db."""
         self.correct_fields()
         self.correct_table()
-        self.correct_primary_key()
         return 'База данных скорректирована'
 
 
 if __name__ == '__main__':
-    source_db = DatabaseWrapper('employees_2.db')
-    target_db = DatabaseWrapper('employees_1.db')
-    corrector = DatabaseCorrection(source_db, target_db)
-    data = corrector.correct_data()
-    print(data)
-    source_db.close_connection()
-    target_db.close_connection()
+    source_db_file = 'source.db'
+    target_db_file = 'target.db'
+
+    if os.path.isfile(source_db_file) and os.path.isfile(target_db_file):
+        source_db = DatabaseWrapper('employees_2.db')
+        target_db = DatabaseWrapper('employees_1.db')
+        corrector = DatabaseCorrection(source_db, target_db)
+        data = corrector.correct_data()
+        print(data)
+        source_db.close_connection()
+        target_db.close_connection()
+    else:
+        print('Одна или обе базы данных отсутствуют!')
